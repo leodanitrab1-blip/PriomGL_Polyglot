@@ -1,0 +1,2 @@
+Run ../cpp/build_wasm.sh (requires Emscripten) to produce priom_kernels.wasm here.
+Until then, the engine automatically uses the JS port of the kernels.
