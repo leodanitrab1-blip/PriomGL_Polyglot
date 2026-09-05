@@ -235,7 +235,11 @@
 
         sync(worldAI, dt, camera) {
             const camPos = camera && camera.position;
+            const liveIds = this._liveIdSet || (this._liveIdSet = new Set());
+            liveIds.clear();
+
             for (const a of worldAI.animals) {
+                liveIds.add(a.id);
                 let rec = this.instances.get(a.id);
                 if (!rec) {
                     rec = this._build(a);
@@ -316,6 +320,24 @@
                 } else if (a.flying) {
                     const bob = Math.sin(rec.phase * 0.5) * 0.4;
                     rec.group.position.y += bob;
+                }
+            }
+
+            // Real leak fixed here: animals removed from worldAI.animals
+            // (death by starvation/predation/fire, or the array simply
+            // being rebuilt) used to stay in `this.instances` forever —
+            // their meshes never left the scene, so every death left a
+            // permanent, frozen "ghost" animal still being drawn (and
+            // still eligible for shadow-casting) for the rest of the
+            // session. Draw calls only ever went up, never down, which
+            // over a few dozen births/deaths is exactly the kind of
+            // unbounded growth that turns "runs fine" into "freezes after
+            // N seconds". Prune anything no longer alive every sync.
+            if (this.instances.size > liveIds.size) {
+                for (const [id, rec] of this.instances) {
+                    if (liveIds.has(id)) continue;
+                    this.scene.remove(rec.group);
+                    this.instances.delete(id);
                 }
             }
         }
