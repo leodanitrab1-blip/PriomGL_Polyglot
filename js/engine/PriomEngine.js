@@ -853,53 +853,77 @@
 
             const loop = (now) => {
                 if (!this.running) return;
-                const dt = Math.min((now - this.clock.last) / 1000, 0.05);
-                this.clock.last = now;
-                this.clock.elapsed = (now - this.clock.start) / 1000;
-                this.renderer.time = this.clock.elapsed;
+                try {
+                    const dt = Math.min((now - this.clock.last) / 1000, 0.05);
+                    this.clock.last = now;
+                    this.clock.elapsed = (now - this.clock.start) / 1000;
+                    this.renderer.time = this.clock.elapsed;
 
-                if (this.worldAI) this.worldAI.update(dt);
-                if (this.optimizerAI) this.optimizerAI.update(dt, this.stats.fps);
-                if (this.metaAI) this.metaAI.update(dt, this.stats.fps);
+                    if (this.worldAI) this.worldAI.update(dt);
+                    if (this.optimizerAI) this.optimizerAI.update(dt, this.stats.fps);
+                    if (this.metaAI) this.metaAI.update(dt, this.stats.fps);
 
-                this._applyEntityScale(this._aiEntityScale);
-                this._syncWeatherParticles();
-                if (this.particles) this.particles.update(dt);
-                if (this.physics) this.physics.step(dt);
+                    this._applyEntityScale(this._aiEntityScale);
+                    this._syncWeatherParticles();
+                    if (this.particles) this.particles.update(dt);
+                    if (this.physics) this.physics.step(dt);
 
-                this._updateCamera(dt);
-                this._updateSun(this.clock.elapsed);
-                this._cullVegetation(this.camera, dt);
+                    this._updateCamera(dt);
+                    this._updateSun(this.clock.elapsed);
+                    this._cullVegetation(this.camera, dt);
 
-                if (this.wildlife && this.worldAI) this.wildlife.sync(this.worldAI, dt, this.camera);
+                    if (this.wildlife && this.worldAI) this.wildlife.sync(this.worldAI, dt, this.camera);
 
-                if (this.worldAI) {
-                    const base = this.worldAI.weather === 'tormenta' ? 0.16
-                        : this.worldAI.weather === 'lluvia' ? 0.09 : 0.05;
-                    // Modulate by Python's precomputed gust envelope (sum of
-                    // incommensurate sine waves, data/hw_luts.json) so wind
-                    // "breathes" instead of holding a flat magnitude — real
-                    // per-frame lookup into a table Python actually produced,
-                    // not just a JS Math.sin() dressed up as multi-language.
-                    const curve = this.polyglot && this.polyglot.python.windGustCurve;
-                    let gust = 1.0;
-                    if (curve && curve.length) {
-                        const t = (this.clock.elapsed * 0.12) % 1;
-                        const idx = Math.floor(t * curve.length);
-                        gust = curve[idx];
+                    if (this.worldAI) {
+                        const base = this.worldAI.weather === 'tormenta' ? 0.16
+                            : this.worldAI.weather === 'lluvia' ? 0.09 : 0.05;
+                        // Modulate by Python's precomputed gust envelope (sum of
+                        // incommensurate sine waves, data/hw_luts.json) so wind
+                        // "breathes" instead of holding a flat magnitude — real
+                        // per-frame lookup into a table Python actually produced,
+                        // not just a JS Math.sin() dressed up as multi-language.
+                        const curve = this.polyglot && this.polyglot.python.windGustCurve;
+                        let gust = 1.0;
+                        if (curve && curve.length) {
+                            const t = (this.clock.elapsed * 0.12) % 1;
+                            const idx = Math.floor(t * curve.length);
+                            gust = curve[idx];
+                        }
+                        this.scene.windStrength = base * gust;
                     }
-                    this.scene.windStrength = base * gust;
-                }
 
-                this.renderer.render(this.scene, this.camera);
-                if (this.particles) this.particles.render(this.camera, this._aiParticleScale);
+                    this.renderer.render(this.scene, this.camera);
+                    if (this.particles) this.particles.render(this.camera, this._aiParticleScale);
 
-                this.stats.frames++;
-                if (now - this.stats.lastFpsUpdate > 400) {
-                    this.stats.fps = Math.round(this.stats.frames * 1000 / (now - this.stats.lastFpsUpdate));
-                    this.stats.frames = 0;
-                    this.stats.lastFpsUpdate = now;
-                    this._updateHUD();
+                    this.stats.frames++;
+                    if (now - this.stats.lastFpsUpdate > 400) {
+                        this.stats.fps = Math.round(this.stats.frames * 1000 / (now - this.stats.lastFpsUpdate));
+                        this.stats.frames = 0;
+                        this.stats.lastFpsUpdate = now;
+                        this._updateHUD();
+                    }
+                    this._consecutiveFrameErrors = 0;
+                } catch (err) {
+                    // CRITICAL: an uncaught exception anywhere above used to
+                    // propagate out of this callback, which means
+                    // requestAnimationFrame(loop) below never ran again —
+                    // the whole engine would silently stop on whatever the
+                    // last successfully drawn frame was. That is *exactly*
+                    // what "se congela" looks like from the outside: not a
+                    // slowdown, a perfectly frozen frame with a live tab
+                    // underneath. Catching here, logging, and continuing
+                    // turns any remaining one-off bug into a visible
+                    // console error instead of a dead engine.
+                    this._consecutiveFrameErrors = (this._consecutiveFrameErrors || 0) + 1;
+                    console.error('⚠️ Error en el frame (motor sigue vivo):', err);
+                    if (this._consecutiveFrameErrors > 240) {
+                        // ~4s of back-to-back failures at 60fps: something is
+                        // truly broken every frame, not a one-off. Stop
+                        // cleanly instead of spinning forever on a dead state.
+                        console.error('💥 Demasiados errores consecutivos — deteniendo el loop.');
+                        this.running = false;
+                        return;
+                    }
                 }
                 requestAnimationFrame(loop);
             };
