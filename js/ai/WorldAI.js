@@ -41,6 +41,12 @@
     class WorldAI {
         constructor(engine) {
             this.engine = engine;
+
+            // Monotonic animal-id counter. Must live here (not inside
+            // _initAnimals, which can bail out early if terrain isn't
+            // ready yet) so it's always a real number before any spawn
+            // path touches it — see the id-collision fix in _spawnAnimal.
+            this._nextAnimalId = 0;
             
             // Tiempo del mundo
             this.time = 0;
@@ -192,7 +198,7 @@
             ];
             
             const count = Math.min(this.config.maxAnimals, 30 + Math.floor(Math.random() * 20));
-            
+
             for (let i = 0; i < count; i++) {
                 const speciesData = species[i % species.length];
                 let x, z, y, tries = 0;
@@ -204,7 +210,7 @@
                 } while ((y < 1.5 || y > 20) && tries < 20);
                 
                 if (tries < 20) {
-                    const animal = this._createAnimal(speciesData, x, y, z, i);
+                    const animal = this._createAnimal(speciesData, x, y, z, this._nextAnimalId++);
                     this.animals.push(animal);
                 }
             }
@@ -918,7 +924,12 @@
                     social: type !== 'zorro' && type !== 'jabalí',
                     diet: type === 'lobo' || type === 'zorro' ? 'carnivore' : 'herbivore'
                 };
-                const id = this.animals.length + 1;
+                // Bug real corregido: antes el id era `this.animals.length + 1`,
+                // que se repite en cuanto el array se acorta por muertes —
+                // dos animales distintos terminaban con el mismo id y el
+                // renderer de fauna (indexado por id) mezclaba sus mallas,
+                // produciendo "animales" que saltaban de posición y forma.
+                const id = this._nextAnimalId++;
                 const animal = this._createAnimal(speciesData, x, y, z, id);
                 this.animals.push(animal);
             }
@@ -960,7 +971,7 @@
                         diet: parentSpecies.diet
                     },
                     newPos.x, newPos.y, newPos.z,
-                    this.animals.length + 1
+                    this._nextAnimalId++
                 );
                 child.radius *= 0.6;
                 child.energy = 0.5;
