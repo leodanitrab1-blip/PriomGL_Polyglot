@@ -1,6 +1,64 @@
 # Changelog — PriomGL Polyglot Quantum
 
-## v6 — Congelamiento, fauna con formas rotas y culling roto
+## v7 — La causa real del congelamiento (no era solo rendimiento)
+
+Después de tu reporte de que seguía congelándose (esta vez a los ~5s),
+investigué más a fondo y encontré el mecanismo exacto — no solo "muchos
+draw calls", sino un fallo estructural que convierte *cualquier* error en un
+congelamiento permanente.
+
+### 🧯 Corregido: el loop principal no tenía manejo de errores
+
+`PriomEngine.start()` ejecutaba toda la simulación y el render dentro de un
+`requestAnimationFrame` **sin `try/catch`**. Si cualquier línea de ese
+camino — simulación del mundo, sincronía de fauna, render — lanzaba una
+excepción, esta se propagaba fuera del callback y `requestAnimationFrame(loop)`
+**nunca se volvía a llamar**. El motor no se "ponía lento": se detenía en
+seco, dejando el último frame dibujado congelado en pantalla para siempre,
+mientras la pestaña seguía técnicamente viva. Esto es exactamente la
+diferencia entre "se ve mal/lento" y "se congela".
+
+Ahora el loop atrapa cualquier error, lo imprime en consola (para poder
+diagnosticarlo) y sigue intentando el siguiente frame — un bug puntual deja
+de ser fatal. Si algo falla de forma catastrófica y consecutiva durante ~4s
+seguidos, el motor se detiene de forma controlada en vez de spamear errores
+para siempre.
+
+### 🐛 Corregido: colisión de IDs entre animales (causaba fauna con formas/posiciones mal)
+
+`_spawnAnimal()` y `_spawnAnimalNear()` calculaban el id del nuevo animal
+como `this.animals.length + 1`. Como el array se acorta cada vez que un
+animal muere (`this.animals = this.animals.filter(...)`), dos animales
+**distintos** nacidos en momentos distintos podían terminar con el
+**mismo id**. `WildlifeRenderer` indexa sus mallas por id — con un id
+duplicado, dos animales de especie/posición distintas terminaban
+compartiendo una sola malla, que saltaba entre las posiciones y aparentaba
+tener la forma equivocada. Ahora hay un contador monotónico
+(`WorldAI._nextAnimalId`) que garantiza unicidad durante toda la sesión.
+
+### 🧟 Corregido: fuga real de mallas "fantasma" al morir un animal
+
+Cuando un animal moría (hambre, depredación, incendio) se quitaba de
+`worldAI.animals`, pero su malla en `WildlifeRenderer.instances` **nunca se
+eliminaba de la escena**. Con cada muerte, un cadáver invisible al gameplay
+pero muy real para el GPU se quedaba dibujándose para siempre. En una sesión
+larga con nacimientos y muertes constantes, los draw calls solo podían
+crecer, nunca bajar — degradación progresiva hasta el congelamiento, tal
+como reportaste. `sync()` ahora borra de la escena y del mapa cualquier
+animal que ya no esté vivo, cada frame.
+
+### 📄 Nota honesta sobre "usa lo mejor de cada lenguaje" para gráficos
+
+Ya lo mencioné en la ronda anterior pero lo repito porque es importante:
+PySide6 (Python de escritorio) y Kotlin nativo **no pueden ejecutarse dentro
+de una pestaña de navegador**. El único pixel real que puede dibujar tu app
+en `gl-polyglot.onrender.com` sale de WebGL2 vía JavaScript — por eso ahí
+están todos los arreglos de esta ronda. Python/Kotlin siguen aportando datos
+y política real (ver v5), y C++ sigue teniendo un camino real a WASM (ver
+v5) para quien quiera compilarlo. Una vez confirmes que ya no se congela,
+la siguiente ronda puede enfocarse 100% en pulir la parte visual (agua,
+atmósfera, iluminación) ahora que el motor no se cae solo.
+
 
 ### 🥶 Corregido: la app se congelaba a los ~15 segundos
 
