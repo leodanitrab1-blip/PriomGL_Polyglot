@@ -83,7 +83,21 @@
                 });
                 if (rec.ssao === false) this.renderer.ssaoEnabled = false;
                 if (rec.bloom === false) this.renderer.bloomEnabled = false;
-                console.log('✅ Renderizador creado · PR max=', maxPR, '· tier=', this.hardwareDNA && this.hardwareDNA.tier);
+                // Neural tonemap (see CHANGELOG v9 / docs/NeuralTonemap.md):
+                // only worth its ~60 extra FMAs/pixel on hardware with
+                // headroom to spare. Confirmed via live headless-browser
+                // testing that the always-on version was heavy enough to
+                // stall rendering — gating it by tier keeps the visual
+                // upgrade without reintroducing the performance problems
+                // fixed in earlier rounds. Desktop is never mobile-tight on
+                // fragment ALU the way a phone GPU is, so treat it as
+                // effectively "high" for this one decision regardless of
+                // the measured tier.
+                const tier = this.hardwareDNA && this.hardwareDNA.tier;
+                const goodTier = tier === 'high' || tier === 'ultra' || !this.isMobile;
+                this.renderer.useNeuralTonemap = !!goodTier;
+                console.log('✅ Renderizador creado · PR max=', maxPR, '· tier=', tier,
+                    '· neural tonemap=', this.renderer.useNeuralTonemap);
             } catch (e) {
                 console.error('Error al crear renderizador:', e);
                 throw e;
@@ -379,7 +393,7 @@
 
             this.scene.sun.direction.set(-0.6, -0.55, -0.35).normalize();
             this.scene.sun.color.set(1.0, 0.9, 0.72);
-            this.scene.sun.intensity = 4.8;
+            this.scene.sun.intensity = 3.0; // was 4.8 — see CHANGELOG v9, overexposure fix
             this.scene.ambientColor.set(0.18, 0.22, 0.32);
             this.scene.fogColor.set(0.5, 0.65, 0.8);
             this.scene.fogDensity = 0.0015;
@@ -805,7 +819,16 @@
             const elev = -this.scene.sun.direction.y;
             const warm = Math.max(0, 1 - elev * 1.8);
             this.scene.sun.color.set(1.0, 0.93 - warm * 0.28, 0.8 - warm * 0.45);
-            this.scene.sun.intensity = 2.2 + elev * 3.8;
+            // Sun intensity used to peak at 6.0, which — fed through this
+            // engine's PBR math (albedo * sunColor * intensity * NdotL) —
+            // pushed nearly every sunlit surface past the tonemap's usable
+            // range before it even got there, crushing every texture's
+            // contrast into a near-flat, washed-out pale look (measured:
+            // std-dev of ~2.7/255 on rendered grass pixels that should vary
+            // by dozens of levels). Peaking at 3.2 instead keeps highlights
+            // inside the tonemap's contrasty midrange instead of blowing
+            // them out. See CHANGELOG v9.
+            this.scene.sun.intensity = 1.4 + elev * 1.8;
             this.scene.ambientColor.set(0.12 + elev * 0.14, 0.15 + elev * 0.12, 0.25 + elev * 0.12);
             if (this.landmarkOrb) {
                 const pulse = 0.9 + Math.sin(t * 2.5) * 0.15;
