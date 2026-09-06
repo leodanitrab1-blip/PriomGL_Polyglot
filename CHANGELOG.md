@@ -1,6 +1,48 @@
 # Changelog — PriomGL Polyglot Quantum
 
-## v8 — Encontrado con pruebas reales en navegador, no solo lectura de código
+## v9 — Evaluado en vivo de nuevo: sobreexposición real + red neuronal en el tonemap
+
+Con el motor ya estable (v8), volví a correrlo en el navegador real para
+buscar por qué seguía "viéndose feo" y encontré una causa concreta y
+medible, no una impresión.
+
+### 🔆 Corregido: el sol estaba sobreexpuesto y aplastaba toda la textura
+
+Medí los píxeles renderizados del suelo (desviación estándar de solo
+2.7/255 — prácticamente un color plano) pese a que el terreno **sí** tenía
+una textura de pasto procedural con variación real. La causa: la intensidad
+del sol llegaba a 6.0 al mediodía, y con la fórmula PBR de este motor
+(`albedo * sunColor * intensity * NdotL`) eso empujaba casi cualquier
+superficie iluminada muy por encima del rango útil del tonemap antes de
+llegar a él — todo el contraste de la textura quedaba comprimido en un
+blanco lavado. Bajé el pico de intensidad a 3.2 y subí el contraste/detalle
+de las texturas procedurales de pasto y roca (una octava de ruido fino
+adicional). Medido después del cambio: desviación estándar ~5-6.5/255, más
+del doble, confirmado con la misma cámara y el mismo tipo de escena.
+
+### 🧠 Nuevo: tonemap aprendido con una red neuronal real (opcional)
+
+Entrené un MLP diminuto (1→12→12→1, ~180 pesos) con Python/numpy puro
+—sin frameworks, sin internet— para aproximar una curva de tonemap filmico,
+y lo incrusté como función GLSL evaluada por píxel en los shaders de
+terreno, PBR y agua. Ver `docs/NeuralTonemap.md` para el detalle honesto:
+qué tan bien ajusta, cómo reentrenar, y por qué se evalúa una sola vez sobre
+luminancia (no 3 veces por canal) para mantener el costo bajo.
+
+**Está gateada por hardware**: al probarla "siempre activa" en un Chromium
+real bajo renderizado por software, confirmé que el costo extra podía volver
+a estancar el renderizado — exactamente el problema que costó varias rondas
+arreglar. Por eso solo se activa en desktop y tiers `high`/`ultra`; en móvil
+y tiers `medium`/`low`/`potato` (el caso real reportado) se usa la fórmula
+ACES directa de la que la red fue entrenada, sin el costo extra.
+
+### 🧪 Metodología
+
+Todo lo anterior se verificó con el mismo arnés de Chromium headless de la
+v8: server local, consola capturada, capturas de pantalla, y esta vez además
+lectura directa de píxeles (`PIL`/`numpy`) para medir contraste en vez de
+solo mirar las imágenes.
+
 
 Instalé un Chromium headless y corrí el motor de verdad (WebGL2 real, consola
 capturada) para dejar de adivinar. Esto encontró dos bugs concretos que las
