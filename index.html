@@ -149,6 +149,7 @@
 
                 // 3. Engine with DNA
                 const engine = new window.PriomEngine(canvas, { hardwareDNA: dna, polyglot: bridge });
+                window.__priomEngine = engine; // debug/testing hook
                 engine.start();
                 window.__priom = engine;
                 setProg(90);

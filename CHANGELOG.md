@@ -1,6 +1,74 @@
 # Changelog — PriomGL Polyglot Quantum
 
-## v7 — La causa real del congelamiento (no era solo rendimiento)
+## v8 — Encontrado con pruebas reales en navegador, no solo lectura de código
+
+Instalé un Chromium headless y corrí el motor de verdad (WebGL2 real, consola
+capturada) para dejar de adivinar. Esto encontró dos bugs concretos que las
+rondas anteriores no habían visto:
+
+### 🎯 La causa real del "se congela" — confirmada, no solo teorizada
+
+```
+ReferenceError: plant is not defined
+    at WorldAI._behaviorGrazing (WorldAI.js:664)
+```
+
+En `_behaviorGrazing`, después de encontrar la planta más cercana con un
+`for (const plant of this.plants)`, el código para "comer" hacía referencia
+a `plant.size` / `plant.health` — pero `plant` es la variable del `for`, que
+ya no existe fuera de él. Debía ser `nearestPlant` (la variable donde sí se
+guarda el resultado de la búsqueda). Esto lanzaba una excepción **cada vez
+que cualquier animal empezaba a pastar** — algo que pasa casi de inmediato
+con 30-40 animales activos.
+
+Como `worldAI.update()` corre **antes** de `renderer.render()` en el loop
+principal, esta excepción cortaba el frame *antes* de llegar a dibujar nada.
+El try/catch de la v7 evitó que el motor muriera del todo, pero sin él
+arreglado la pantalla dejaba de actualizarse igual — visualmente
+indistinguible de un congelamiento total, solo que ahora con el error
+gritando en la consola en vez de morir en silencio. Arreglado: ahora usa
+`nearestPlant` correctamente.
+
+### 🌑 Sombra rota: un parche gigante y pixelado sobre el terreno
+
+Con el motor corriendo de verdad pude ver el bug con mis propios ojos: una
+sombra de árbol enorme, borrosa y con bordes en bloques cubriendo media
+ladera — muchísimo más grande que el árbol que la proyecta.
+
+Causa: mi propio cambio de la v5/v6, que rellenaba el arreglo de splits de
+cascada de sombra de Python repitiendo el último valor cuando el tier tenía
+menos de 4 (p. ej. `medium` da 3 splits → `[31.75, 76.09, 220]` se rellenaba
+a `[31.75, 76.09, 220, 220]`). Dos cascadas con el mismo plano lejano acaban
+siendo geométricamente idénticas — trabajo de GPU duplicado y, peor, la capa
+de sombreado puede terminar usando la cascada equivocada (más gruesa/borrosa)
+para geometría cercana. Arreglado: en vez de repetir el último valor, cada
+cascada extra se extrapola creciendo un 40%, así ninguna cascada queda
+duplicada.
+
+Confirmé el arreglo con capturas de pantalla reales antes/después: el parche
+gigante desapareció y las sombras de los árboles ahora se ven como manchas
+suaves y proporcionadas sobre el terreno y el agua.
+
+### 🏔️ Pendiente identificado (no arreglado aún): bordes dentados en riberas/acantilados
+
+Con las pruebas reales también vi que donde el terreno cae con pendiente
+pronunciada hacia el agua (riberas del río), el borde entre pasto y roca se
+ve dentado/con "dientes de sierra", y en algunos ángulos la repisa de pasto
+parece flotar sobre la pared de roca. Esto es una limitación de resolución
+de la malla del terreno (192 segmentos sobre 400 unidades ≈ 2m por celda) en
+pendientes pronunciadas, no una excepción ni un dato corrupto — es el
+siguiente candidato claro para una pasada de pulido visual (más segmentos
+cerca de la cámara, o una franja de "playa"/transición que suavice el
+encuentro agua-tierra).
+
+### 🧪 Metodología: dejar de adivinar
+
+A partir de ahora, antes de reportar un arreglo como "hecho", lo ejecuto en
+un Chromium real (headless, WebGL2 vía software rendering) sirviendo el
+proyecto con `python3 -m http.server`, capturo la consola completa y tomo
+capturas de pantalla a lo largo de ~45s de simulación. Así encontré ambos
+bugs de esta ronda en minutos en vez de seguir leyendo código a ciegas.
+
 
 Después de tu reporte de que seguía congelándose (esta vez a los ~5s),
 investigué más a fondo y encontré el mecanismo exacto — no solo "muchos
