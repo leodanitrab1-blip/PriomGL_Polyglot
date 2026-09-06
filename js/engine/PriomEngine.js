@@ -112,7 +112,15 @@
                 let splits = py.shadowCascadeSplits && py.shadowCascadeSplits[tier];
                 if (splits && splits.length) {
                     splits = splits.slice();
-                    while (splits.length < 4) splits.push(splits[splits.length - 1]);
+                    // Extrapolate rather than repeat the last value: two
+                    // cascades that share an identical far plane become
+                    // perfect geometric duplicates (same light-space box,
+                    // same projection) — wasted GPU work, and depending on
+                    // which one the shading pass samples it can pick the
+                    // coarser of the pair for near geometry. Growing each
+                    // extra slot by 40% keeps every cascade meaningfully
+                    // different in size.
+                    while (splits.length < 4) splits.push(splits[splits.length - 1] * 1.4);
                     this.scene.sun.cascadeSplits = splits.slice(0, 4);
                     console.log('☀️ Cascadas de sombra (Python live):', this.scene.sun.cascadeSplits);
                 } else {
