@@ -269,10 +269,16 @@
                     const i = (y * size + x) * 4;
                     const n = this._fbm(x / 32, y / 32, 6);
                     const n2 = this._fbm(x / 8 + 10, y / 8 + 20, 3);
-                    const green = 0.25 + n * 0.35 + n2 * 0.1;
-                    data[i] = Math.floor((0.15 + n * 0.1) * 255);
-                    data[i + 1] = Math.floor(green * 255);
-                    data[i + 2] = Math.floor((0.08 + n * 0.05) * 255);
+                    // Fine micro-detail octave — visible as individual
+                    // blade-scale mottling at close range instead of only
+                    // the two broad noise layers above (which mostly wash
+                    // out to a near-flat average once the tonemap and
+                    // mip-filtering get to them).
+                    const n3 = this._fbm(x / 2.2 + 5, y / 2.2 + 5, 2);
+                    const green = 0.20 + n * 0.42 + n2 * 0.14 + n3 * 0.09;
+                    data[i] = Math.floor(Math.min(1, 0.12 + n * 0.13 + n3 * 0.05) * 255);
+                    data[i + 1] = Math.floor(Math.min(1, green) * 255);
+                    data[i + 2] = Math.floor(Math.min(1, 0.06 + n * 0.06 + n3 * 0.03) * 255);
                     data[i + 3] = 255;
                 }
             }
@@ -286,7 +292,8 @@
                     const i = (y * size + x) * 4;
                     const n = this._fbm(x / 40, y / 40, 5);
                     const n2 = this._fbm(x / 8, y / 8, 4);
-                    const v = 0.35 + n * 0.25 + n2 * 0.15;
+                    const n3 = this._fbm(x / 2.5, y / 2.5, 2);
+                    const v = Math.min(1, 0.28 + n * 0.32 + n2 * 0.18 + n3 * 0.1);
                     data[i] = Math.floor(v * 255);
                     data[i + 1] = Math.floor(v * 0.95 * 255);
                     data[i + 2] = Math.floor(v * 0.9 * 255);
