@@ -660,9 +660,16 @@
             if (nearestPlant) {
                 this._moveToward(animal, nearestPlant.pos, 0.3);
                 if (nearestDist < 0.8) {
-                    // Comer
-                    plant.size *= 0.9;
-                    plant.health *= 0.9;
+                    // Comer — bug real corregido: esto usaba la variable
+                    // `plant` del for de arriba, que ya no existe fuera del
+                    // loop (ReferenceError cada vez que un animal empezaba a
+                    // pastar, o sea casi de inmediato). Al lanzar la
+                    // excepción DENTRO de worldAI.update(), que corre antes
+                    // que renderer.render() en el loop principal, ningún
+                    // frame llegaba a dibujarse nunca más — visualmente
+                    // idéntico a un congelamiento total.
+                    nearestPlant.size *= 0.9;
+                    nearestPlant.health *= 0.9;
                     animal.hunger = Math.max(0, animal.hunger - 0.1);
                     animal.energy = Math.min(1, animal.energy + 0.05);
                     animal.stateTimer = Math.max(1, animal.stateTimer - 0.5);
