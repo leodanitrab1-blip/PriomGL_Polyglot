@@ -896,6 +896,7 @@
             gl.uniform3fv(u.uFogColor, [scene.fogColor.r, scene.fogColor.g, scene.fogColor.b]);
             gl.uniform1f(u.uFogDensity, scene.fogDensity);
             gl.uniform1f(u.uTime, this.time);
+            if (u.uUseNeuralTonemap) gl.uniform1i(u.uUseNeuralTonemap, this.useNeuralTonemap ? 1 : 0);
             if (u.uWindDir) gl.uniform3fv(u.uWindDir, [scene.wind ? scene.wind.x : 1, 0, scene.wind ? scene.wind.z : 0.3]);
             if (u.uWindStrength) gl.uniform1f(u.uWindStrength, scene.windStrength || 0.06);
 
@@ -1076,6 +1077,7 @@
                 gl.uniform1f(prog.uniforms.uWaveScale, 1.0);
                 gl.uniform3fv(prog.uniforms.uFogColor, [scene.fogColor.r, scene.fogColor.g, scene.fogColor.b]);
                 gl.uniform1f(prog.uniforms.uFogDensity, scene.fogDensity);
+                if (prog.uniforms.uUseNeuralTonemap) gl.uniform1i(prog.uniforms.uUseNeuralTonemap, this.useNeuralTonemap ? 1 : 0);
                 gl.activeTexture(gl.TEXTURE0);
                 gl.bindTexture(gl.TEXTURE_2D, this.textures.noiseNormal);
                 gl.uniform1i(prog.uniforms.uNormalMap, 0);
